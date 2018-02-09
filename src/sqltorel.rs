@@ -18,14 +18,14 @@ use std::string::String;
 use super::sql::*;
 use super::rel::*;
 
-pub struct SqlToRel {
+pub struct SqlToRel<'s> {
     //default_schema: Option<String>,
-    schemas: HashMap<String, Schema>
+    schemas: &'s HashMap<String, Schema>
 }
 
-impl SqlToRel {
+impl<'s> SqlToRel<'s> {
 
-    pub fn new(schemas: HashMap<String, Schema>) -> Self {
+    pub fn new(schemas: &'s HashMap<String, Schema>) -> Self {
         SqlToRel { /*default_schema: None,*/ schemas }
     }
 

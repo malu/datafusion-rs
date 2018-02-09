@@ -237,7 +237,7 @@ impl ExecutionContext {
         let ast = Parser::parse_sql(String::from(sql))?;
 
         // create a query planner
-        let query_planner = SqlToRel::new(self.schemas.clone()); //TODO: pass reference to schemas
+        let query_planner = SqlToRel::new(&self.schemas);
 
         // plan the query (create a logical relational plan)
         let plan = query_planner.sql_to_rel(&ast)?;
