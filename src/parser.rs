@@ -562,25 +562,27 @@ mod tests {
 
     use super::*;
 
+    fn tokenize(sql: &str) -> Result<Vec<Token>, ParserError> {
+        let mut tokenizer = Tokenizer::new(&sql);
+        tokenizer.tokenize()
+    }
+
     #[test]
     fn tokenize_select_1()  {
-        let sql = String::from("SELECT 1");
-        let mut tokenizer = Tokenizer::new(&sql);
-        let tokens = tokenizer.tokenize().unwrap();
+        let tokens = tokenize("SELECT 1");
 
         let expected = vec![
             Token::Keyword(String::from("SELECT")),
             Token::Number(String::from("1"))
         ];
 
-        compare(expected, tokens);
+        assert!(tokens.is_ok());
+        compare(expected, tokens.unwrap());
     }
 
     #[test]
     fn tokenize_scalar_function()  {
-        let sql = String::from("SELECT sqrt(1)");
-        let mut tokenizer = Tokenizer::new(&sql);
-        let tokens = tokenizer.tokenize().unwrap();
+        let tokens = tokenize("SELECT sqrt(1)");
 
         let expected = vec![
             Token::Keyword(String::from("SELECT")),
@@ -590,14 +592,13 @@ mod tests {
             Token::RParen
         ];
 
-        compare(expected, tokens);
+        assert!(tokens.is_ok());
+        compare(expected, tokens.unwrap());
     }
 
     #[test]
     fn tokenize_simple_select() {
-        let sql = String::from("SELECT * FROM customer WHERE id = 1 LIMIT 5");
-        let mut tokenizer = Tokenizer::new(&sql);
-        let tokens = tokenizer.tokenize().unwrap();
+        let tokens = tokenize("SELECT * FROM customer WHERE id = 1 LIMIT 5");
 
         let expected = vec![
             Token::Keyword(String::from("SELECT")),
@@ -612,85 +613,61 @@ mod tests {
             Token::Number(String::from("5")),
         ];
 
-        compare(expected, tokens);
+        assert!(tokens.is_ok());
+        compare(expected, tokens.unwrap());
+    }
+
+    fn parse_to_ast(sql: &str) -> Result<ASTNode, ParserError> {
+        let mut tokenizer = Tokenizer::new(&sql);
+        let tokens = tokenizer.tokenize().unwrap();
+        let mut parser = Parser::new(&tokens);
+        parser.parse()
     }
 
     #[test]
     fn parse_simple_select() {
-        let sql = String::from("SELECT id, fname, lname FROM customer WHERE id = 1 LIMIT 5");
-        let mut tokenizer = Tokenizer::new(&sql);
-        let tokens = tokenizer.tokenize().unwrap();
-        let mut parser = Parser::new(&tokens);
-        let ast = parser.parse().unwrap();
-        //println!("AST = {:?}", ast);
-        match ast {
-            ASTNode::SQLSelect {
-                projection, limit, ..
-            } => {
-                assert_eq!(3, projection.len());
-                assert_eq!(Some(Box::new(ASTNode::SQLLiteralInt(5))), limit);
-            }
-            _ => assert!(false),
+        let ast = parse_to_ast("SELECT id, fname, lname FROM customer WHERE id = 1 LIMIT 5");
+        if let ASTNode::SQLSelect { projection, limit, ..  } = ast.unwrap() {
+            assert_eq!(3, projection.len());
+            assert_eq!(Some(Box::new(ASTNode::SQLLiteralInt(5))), limit);
         }
     }
 
     #[test]
     fn parse_limit_accepts_all() {
-        let sql = String::from("SELECT id, fname, lname FROM customer WHERE id = 1 LIMIT ALL");
-        let mut tokenizer = Tokenizer::new(&sql);
-        let tokens = tokenizer.tokenize().unwrap();
-        let mut parser = Parser::new(&tokens);
-        let ast = parser.parse().unwrap();
-        //println!("AST = {:?}", ast);
-        match ast {
-            ASTNode::SQLSelect {
-                projection, limit, ..
-            } => {
-                assert_eq!(3, projection.len());
-                assert_eq!(None, limit);
-            }
-            _ => assert!(false),
+        let ast = parse_to_ast("SELECT id, fname, lname FROM customer WHERE id = 1 LIMIT ALL");
+        assert!(ast.is_ok());
+        if let ASTNode::SQLSelect { projection, limit, .. } = ast.unwrap() {
+            assert_eq!(3, projection.len());
+            assert_eq!(None, limit);
         }
     }
 
     #[test]
     fn parse_create_external_table() {
-        let sql = String::from("CREATE EXTERNAL TABLE uk_cities (\
+        let ast = parse_to_ast("CREATE EXTERNAL TABLE uk_cities (\
             name VARCHAR(100) NOT NULL,\
             lat DOUBLE NOT NULL,\
             lng DOUBLE NOT NULL)");
 
-        let mut tokenizer = Tokenizer::new(&sql);
-        let tokens = tokenizer.tokenize().unwrap();
-        let mut parser = Parser::new(&tokens);
-        let ast = parser.parse().unwrap();
-        //println!("AST = {:?}", ast);
-        match ast {
-            ASTNode::SQLCreateTable { name, columns, .. } => {
-                assert_eq!("uk_cities", name);
-                assert_eq!(3, columns.len());
-            },
-            _ => assert!(false)
+        assert!(ast.is_ok());
+        if let ASTNode::SQLCreateTable { name, columns, .. } = ast.unwrap() {
+            assert_eq!("uk_cities", name);
+            assert_eq!(3, columns.len());
         }
     }
 
     #[test]
     fn parse_scalar_function_in_projection() {
-        let sql = String::from("SELECT sqrt(id) FROM foo");
-        let mut tokenizer = Tokenizer::new(&sql);
-        let tokens = tokenizer.tokenize().unwrap();
-        let mut parser = Parser::new(&tokens);
-        let ast = parser.parse().unwrap();
-        //println!("AST = {:?}", ast);
-        if let ASTNode::SQLSelect { projection, .. } = ast {
-            assert_eq!(
-                vec![ASTNode::SQLFunction {
-                    id: String::from("sqrt"),
-                    args: vec![ASTNode::SQLIdentifier { id: String::from("id") }],
-                }],
-                projection);
-        } else {
-            assert!(false);
+        let ast = parse_to_ast("SELECT sqrt(id) FROM foo");
+        assert!(ast.is_ok());
+        if let ASTNode::SQLSelect { projection, .. } = ast.unwrap() {
+            assert_eq!(vec![
+                       ASTNode::SQLFunction {
+                           id: String::from("sqrt"),
+                           args: vec![ASTNode::SQLIdentifier { id: String::from("id") }],
+                       }],
+                       projection);
         }
     }
 
